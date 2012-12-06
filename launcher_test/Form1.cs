@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -58,7 +59,7 @@ namespace launcher_test
             EventArgs e
             )
         {
-            this.Visible = false;
+            this.Visible = true;
             Log("load");
             bool r = RegisterHotKey(this.Handle, HOTKEY_ID, MOD.MOD_CONTROL, (int)' ');
             Log(string.Format("reg hk {0}", r));
@@ -70,6 +71,8 @@ namespace launcher_test
             listBox1.Items.Add("hello");
             listBox1.Items.Add("two");
             listBox1.Items.Add("see");
+
+            IndexLinks();
         }
 
         private void Log(
@@ -135,6 +138,31 @@ namespace launcher_test
         {
             //MessageBox.Show("closed");
             UnregisterHotKey(this.Handle, HOTKEY_ID);
+        }
+
+        private void IndexLinks()
+        {
+            string CommonStartMenu = Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu);
+            string UserStartMenu = Environment.GetFolderPath(Environment.SpecialFolder.StartMenu);
+            AddLinks(CommonStartMenu);
+            AddLinks(UserStartMenu);
+        }
+
+        private void AddLinks(string folder)
+        {
+            try
+            {
+                var lnkFiles = Directory.EnumerateFiles(folder, "*.lnk", SearchOption.AllDirectories);
+
+                foreach (string currentFile in lnkFiles)
+                {
+                    Log(Path.GetFileNameWithoutExtension(currentFile));
+                }
+            }
+            catch (Exception e)
+            {
+                Log("AddLinks exception: " + e);
+            }
         }
     }
 }
