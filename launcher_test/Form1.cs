@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -6,6 +7,7 @@ using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 
@@ -15,6 +17,7 @@ namespace launcher_test
     {
         private const int WM_HOTKEY = 0x0312;
         private const int HOTKEY_ID = 0;
+        private WindowsLinks StartMenuLinks = new WindowsLinks();
 
         [Flags]
         private enum MOD : uint
@@ -60,28 +63,16 @@ namespace launcher_test
             )
         {
             this.Visible = true;
-            Log("load");
+            Debug.WriteLine("load");
             bool r = RegisterHotKey(this.Handle, HOTKEY_ID, MOD.MOD_CONTROL, (int)' ');
-            Log(string.Format("reg hk {0}", r));
+            Debug.WriteLine(string.Format("reg hk {0}", r));
             if (r == false)
             {
                 MessageBox.Show("failed to register hotkey");
                 this.Close();
             }
-            listBox1.Items.Add("hello");
-            listBox1.Items.Add("two");
-            listBox1.Items.Add("see");
-
             IndexLinks();
-        }
-
-        private void Log(
-            string message
-            )
-        {
-            textBox2.Text += message + Environment.NewLine;
-            textBox2.SelectionStart = textBox2.Text.Length;
-            textBox2.ScrollToCaret();
+            FilterLinks();
         }
 
         private void textBox1_TextChanged(
@@ -89,80 +80,176 @@ namespace launcher_test
             EventArgs e
             )
         {
-            Log("change");
+            FilterLinks();
         }
 
-        private void Form1_KeyUp(
+        private void Form1_KeyDown(
             object sender,
             KeyEventArgs e
             )
         {
-            Log("up");
-
-            switch (e.KeyCode)
-            {
-                case Keys.Escape:
-                    Log("escape");
-                    Close();
-                    //this.Hide();
-                    break;
-                case Keys.Enter:
-                    Log("enter");
-                    Log((string)listBox1.SelectedItem);
-                    listBox1.Items.Clear();
-                    break;
-                case Keys.Space:
-                    Log("space");
-                    break;
-                default:
-                    break;
-            }
-
             if (e.Control)
             {
-                Log("control");
+                Debug.WriteLine("dn ctrl");
+
+                switch (e.KeyCode)
+                {
+                    case Keys.A:
+                        textBox1.SelectionStart = 0;
+                        break;
+                    case Keys.E:
+                        textBox1.SelectionStart = textBox1.TextLength;
+                        break;
+                    case Keys.U:
+                        textBox1.Text = "";
+                        break;
+                    case Keys.N:
+                        if (listBox1.SelectedIndex < (listBox1.Items.Count - 1))
+                        {
+                            listBox1.SelectedIndex += 1;
+                        }
+                        break;
+                    case Keys.P:
+                        if (listBox1.SelectedIndex > 0)
+                        {
+                            listBox1.SelectedIndex -= 1;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                return;
             }
             else
             {
-                ;
+                switch (e.KeyCode)
+                {
+                    case Keys.Escape:
+                        //Debug.WriteLine("escape");
+                        //Close();
+                        this.Hide();
+                        break;
+                    case Keys.Enter:
+                        //Debug.WriteLine("enter");
+                        //Debug.WriteLine((string)listBox1.SelectedItem);
+                        StartMenuLinks.Launch((string)listBox1.SelectedItem);
+                        Hide();
+                        break;
+                    default:
+                        break;
+                }
             }
         }
 
         private void Form1_Deactivate(object sender, EventArgs e)
         {
-            Log("deactivate");
-            this.Hide();
+            //Debug.WriteLine("deactivate");
+            Hide();
         }
 
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
         {
-            //MessageBox.Show("closed");
             UnregisterHotKey(this.Handle, HOTKEY_ID);
         }
 
         private void IndexLinks()
         {
-            string CommonStartMenu = Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu);
-            string UserStartMenu = Environment.GetFolderPath(Environment.SpecialFolder.StartMenu);
-            AddLinks(CommonStartMenu);
-            AddLinks(UserStartMenu);
+            string commonStartMenu = Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu);
+            string userStartMenu = Environment.GetFolderPath(Environment.SpecialFolder.StartMenu);
+            StartMenuLinks.Folders.Add(commonStartMenu);
+            StartMenuLinks.Folders.Add(userStartMenu);
+            StartMenuLinks.Index();
         }
 
-        private void AddLinks(string folder)
+        private void FilterLinks()
         {
-            try
+            listBox1.Items.Clear();
+            foreach (Link link in StartMenuLinks.Filter(textBox1.Text))
             {
-                var lnkFiles = Directory.EnumerateFiles(folder, "*.lnk", SearchOption.AllDirectories);
-
-                foreach (string currentFile in lnkFiles)
-                {
-                    Log(Path.GetFileNameWithoutExtension(currentFile));
-                }
+                listBox1.Items.Add(link.FileName);
             }
-            catch (Exception e)
+            if (listBox1.Items.Count > 0)
             {
-                Log("AddLinks exception: " + e);
+                listBox1.SelectedIndex = 0;
             }
         }
     }
+
+    public class Link
+    {
+        public string FileName;
+        public string FilePath;
+        public int Score;
+
+        public Link(string filePath, int score)
+        {
+            FilePath = filePath;
+            FileName = Path.GetFileNameWithoutExtension(filePath);
+            Score = score;
+        }
+    }
+
+    public class WindowsLinks
+    {
+        public List<string> Folders = new List<string>();
+        private List<Link> Links;
+
+        public void Index()
+        {
+            Links = new List<Link>();
+            foreach (string folder in Folders)
+            {
+                try
+                {
+                    var lnkFiles = Directory.EnumerateFiles(folder, "*.lnk", SearchOption.AllDirectories);
+                    foreach (string filePath in lnkFiles)
+                    {
+                        // TODO load history score
+                        Links.Add(new Link(filePath, 0));
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.WriteLine("AddLinks exception: " + e);
+                }
+            }
+        }
+
+        public List<Link> Filter(string needle)
+        {
+            // TODO valid needle for regex
+            string pattern = needle;
+            // TODO score and sort
+            List<Link> matches = new List<Link>();
+            foreach(Link link in Links)
+            {
+                if (Regex.IsMatch(link.FileName, pattern, RegexOptions.IgnoreCase))
+                {
+                    matches.Add(link);
+                }
+            }
+
+            if (matches.Count > 5)
+            {
+                return matches.GetRange(0, 5);
+            }
+            else
+            {
+                return matches;
+            }
+        }
+
+        public void Launch(string fileName)
+        {
+            foreach(Link link in Links)
+            {
+                if (link.FileName == fileName)
+                {
+                    System.Diagnostics.Process.Start(link.FilePath);
+                    break;
+                }
+            }
+        }
+    }
+
 }
