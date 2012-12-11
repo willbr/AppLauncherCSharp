@@ -48,6 +48,8 @@ namespace launcher_test
                 int id = m.WParam.ToInt32();
                 //MessageBox.Show(string.Format("Hotkey {0}", id));
                 textBox1.Focus();
+                textBox1.SelectionStart = 0;
+                textBox1.SelectionLength = textBox1.TextLength;
                 this.Visible = !this.Visible;
             }
             base.WndProc(ref m);
