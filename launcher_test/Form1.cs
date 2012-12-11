@@ -15,6 +15,7 @@ namespace launcher_test
 {
     public partial class Form1 : Form
     {
+        private bool Started = false;
         private const int WM_HOTKEY = 0x0312;
         private const int HOTKEY_ID = 0;
         private WindowsLinks StartMenuLinks = new WindowsLinks();
@@ -47,26 +48,29 @@ namespace launcher_test
             if (m.Msg == WM_HOTKEY) {
                 int id = m.WParam.ToInt32();
                 //MessageBox.Show(string.Format("Hotkey {0}", id));
-                textBox1.Focus();
-                textBox1.SelectionStart = 0;
-                textBox1.SelectionLength = textBox1.TextLength;
+                this.Started = true;
                 this.Visible = !this.Visible;
             }
             base.WndProc(ref m);
         }
 
+        // http://stackoverflow.com/questions/5168249/c-showing-an-invisible-form
+        // skips first show event
+        protected override void SetVisibleCore(bool value)
+        {
+            if (!this.IsHandleCreated && !this.Started)
+            {
+                this.CreateHandle();
+                value = false;   // Prevent window from becoming visible
+            }
+            if (!this.Started)
+                value = false;
+            base.SetVisibleCore(value);
+        }
+
         public Form1()
         {
             InitializeComponent();
-        }
-
-        private void Form1_Load(
-            object sender,
-            EventArgs e
-            )
-        {
-            textBox1.Focus();
-            Debug.WriteLine("load");
             bool r = RegisterHotKey(this.Handle, HOTKEY_ID, MOD.MOD_CONTROL, (int)' ');
             Debug.WriteLine(string.Format("reg hk {0}", r));
             if (r == false)
@@ -74,6 +78,13 @@ namespace launcher_test
                 MessageBox.Show("failed to register hotkey");
                 this.Close();
             }
+        }
+
+        private void Form1_Load(
+            object sender,
+            EventArgs e
+            )
+        {
             IndexLinks();
             FilterLinks();
         }
@@ -219,6 +230,20 @@ namespace launcher_test
         {
             if (listBox1.SelectedIndex > 0)
                 listBox1.SelectedIndex -= 1;
+        }
+
+        private void Form1_VisibleChanged(object sender, EventArgs e)
+        {
+            Debug.WriteLine("vc");
+            textBox1.Focus();
+            // Select all text
+            textBox1.SelectionStart = 0;
+            textBox1.SelectionLength = textBox1.TextLength;
+        }
+
+        private void Form1_Shown(object sender, EventArgs e)
+        {
+            textBox1.Focus();
         }
     }
 
