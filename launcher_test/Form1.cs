@@ -47,7 +47,8 @@ namespace launcher_test
             if (m.Msg == WM_HOTKEY) {
                 int id = m.WParam.ToInt32();
                 //MessageBox.Show(string.Format("Hotkey {0}", id));
-                this.Show();
+                textBox1.Focus();
+                this.Visible = !this.Visible;
             }
             base.WndProc(ref m);
         }
@@ -62,7 +63,7 @@ namespace launcher_test
             EventArgs e
             )
         {
-            this.Visible = true;
+            textBox1.Focus();
             Debug.WriteLine("load");
             bool r = RegisterHotKey(this.Handle, HOTKEY_ID, MOD.MOD_CONTROL, (int)' ');
             Debug.WriteLine(string.Format("reg hk {0}", r));
@@ -88,62 +89,41 @@ namespace launcher_test
             KeyEventArgs e
             )
         {
-            if (e.Control)
+            switch (e.KeyCode)
             {
-                Debug.WriteLine("dn ctrl");
-
-                switch (e.KeyCode)
-                {
-                    case Keys.A:
-                        textBox1.SelectionStart = 0;
-                        break;
-                    case Keys.E:
-                        textBox1.SelectionStart = textBox1.TextLength;
-                        break;
-                    case Keys.U:
-                        textBox1.Text = "";
-                        break;
-                    case Keys.N:
-                        if (listBox1.SelectedIndex < (listBox1.Items.Count - 1))
-                        {
-                            listBox1.SelectedIndex += 1;
-                        }
-                        break;
-                    case Keys.P:
-                        if (listBox1.SelectedIndex > 0)
-                        {
-                            listBox1.SelectedIndex -= 1;
-                        }
-                        break;
-                    default:
-                        break;
-                }
-                return;
-            }
-            else
-            {
-                switch (e.KeyCode)
-                {
-                    case Keys.Escape:
-                        //Debug.WriteLine("escape");
-                        //Close();
-                        this.Hide();
-                        break;
-                    case Keys.Enter:
-                        //Debug.WriteLine("enter");
-                        //Debug.WriteLine((string)listBox1.SelectedItem);
-                        StartMenuLinks.Launch((string)listBox1.SelectedItem);
-                        Hide();
-                        break;
-                    default:
-                        break;
-                }
+                case Keys.Escape:
+                    Hide();
+                    e.SuppressKeyPress = true; // stops beeping
+                    break;
+                case Keys.Enter:
+                    if (textBox1.Text == ";q")
+                        Close();
+                    StartMenuLinks.Launch((string)listBox1.SelectedItem);
+                    Hide();
+                    e.SuppressKeyPress = true;
+                    break;
+                case Keys.Tab:
+                    
+                    if (e.Shift)
+                    {
+                        Debug.WriteLine("+tab");
+                        PreviousSelection();
+                    }
+                    else
+                    {
+                        Debug.WriteLine("tab");
+                        NextSelection();
+                    }
+                    e.SuppressKeyPress = true;
+                    break;
+                default:
+                    textBox1.Focus();
+                    break;
             }
         }
 
         private void Form1_Deactivate(object sender, EventArgs e)
         {
-            //Debug.WriteLine("deactivate");
             Hide();
         }
 
@@ -173,6 +153,71 @@ namespace launcher_test
                 listBox1.SelectedIndex = 0;
             }
         }
+
+        private void clearToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            textBox1.Text = "";
+        }
+
+        private void homeToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            textBox1.SelectionStart = 0;
+        }
+
+        private void endToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            textBox1.SelectionStart = textBox1.TextLength;
+        }
+
+        private void nextToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            NextSelection();
+        }
+
+        private void previusToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            PreviousSelection();
+        }
+
+        private void forwardToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ForwardChar();
+        }
+
+        private void backwardToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            BackwardChar();
+        }
+
+        private void killToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            textBox1.SelectionLength = textBox1.TextLength;
+            textBox1.SelectedText = "";
+        }
+
+        private void BackwardChar()
+        {
+            if (textBox1.SelectionStart > 0)
+                textBox1.SelectionStart -= 1;
+        }
+
+        private void ForwardChar()
+        {
+            if (textBox1.SelectionStart < textBox1.TextLength)
+                textBox1.SelectionStart += 1;
+        }
+
+        private void NextSelection()
+        {
+            if (listBox1.SelectedIndex < listBox1.Items.Count)
+                listBox1.SelectedIndex += 1;
+        }
+
+        private void PreviousSelection()
+        {
+            if (listBox1.SelectedIndex > 0)
+                listBox1.SelectedIndex -= 1;
+        }
     }
 
     public class Link
@@ -193,6 +238,15 @@ namespace launcher_test
     {
         public List<string> Folders = new List<string>();
         private List<Link> Links;
+        private string[] IgnoreTerms = {
+                                    "uninstall",
+                                    "read ?me",
+                                    "manual",
+                                    "about",
+                                    "help",
+                                    "license",
+                                    "reset",
+                                };
 
         public void Index()
         {
@@ -205,7 +259,10 @@ namespace launcher_test
                     foreach (string filePath in lnkFiles)
                     {
                         // TODO load history score
-                        Links.Add(new Link(filePath, 0));
+                        Link link = new Link(filePath, 0);
+
+                        if (ValidLink(link))
+                            Links.Add(link);
                     }
                 }
                 catch (Exception e)
@@ -213,6 +270,18 @@ namespace launcher_test
                     Debug.WriteLine("AddLinks exception: " + e);
                 }
             }
+        }
+
+        private bool ValidLink(Link link)
+        {
+            foreach(string term in IgnoreTerms)
+            {
+                if (Regex.IsMatch(link.FileName, term, RegexOptions.IgnoreCase))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         public List<Link> Filter(string needle)
@@ -229,14 +298,7 @@ namespace launcher_test
                 }
             }
 
-            if (matches.Count > 5)
-            {
-                return matches.GetRange(0, 5);
-            }
-            else
-            {
-                return matches;
-            }
+            return matches;
         }
 
         public void Launch(string fileName)
