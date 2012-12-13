@@ -16,6 +16,7 @@ namespace launcher_test
     public partial class Form1 : Form
     {
         private bool Started = false;
+        private bool CommandMode = false;
         private const int WM_HOTKEY = 0x0312;
         private const int HOTKEY_ID = 0;
         private WindowsLinks StartMenuLinks = new WindowsLinks();
@@ -94,7 +95,17 @@ namespace launcher_test
             EventArgs e
             )
         {
-            FilterLinks();
+            string text = textBox1.Text;
+            if (text.Length > 0 && @";+-*/".IndexOf(text[0]) != -1)
+            {
+                CommandMode = true;
+                ParseCommand();
+            }
+            else
+            {
+                CommandMode = false;
+                FilterLinks();
+            }
         }
 
         private void Form1_KeyDown(
@@ -109,9 +120,31 @@ namespace launcher_test
                     e.SuppressKeyPress = true; // stops beeping
                     break;
                 case Keys.Enter:
-                    if (textBox1.Text == ";q")
-                        Close();
-                    StartMenuLinks.Launch((string)listBox1.SelectedItem);
+                    if (CommandMode)
+                    {
+                        if (textBox1.Text[0] == ';')
+                        {
+                            string cmd = textBox1.Text.Substring(1);
+                            switch (cmd)
+                            {
+                                case "q":
+                                case "quad":
+                                    Close();
+                                    break;
+                                default:
+                                    Debug.WriteLine("unknown command: " + cmd);
+                                    break;
+                            }
+                        }
+                        else
+                        {
+                            Clipboard.SetText((string)listBox1.SelectedItem);
+                        }
+                    }
+                    else
+                    {
+                        StartMenuLinks.Launch((string)listBox1.SelectedItem);
+                    }
                     Hide();
                     e.SuppressKeyPress = true;
                     break;
@@ -234,7 +267,6 @@ namespace launcher_test
 
         private void Form1_VisibleChanged(object sender, EventArgs e)
         {
-            Debug.WriteLine("vc");
             textBox1.Focus();
             // Select all text
             textBox1.SelectionStart = 0;
@@ -244,6 +276,109 @@ namespace launcher_test
         private void Form1_Shown(object sender, EventArgs e)
         {
             textBox1.Focus();
+        }
+
+        private void ParseCommand()
+        {
+            if (textBox1.Text[0] == ';')
+            {
+                string cmd = textBox1.Text.Substring(1);
+            }
+            else
+            {
+                Debug.WriteLine("parse math");
+                string cmd = textBox1.Text;
+                Stack<string> s = new Stack<string>();
+                List<string> l = new List<string>();
+                string[] tokens = Regex.Split(Regex.Replace(cmd, @"([\(\)])", @" $1 "), @"\s+");
+                foreach (string token in tokens)
+                {
+                    try
+                    {
+                        if (token == ")")
+                        {
+                            bool foundPair = false;
+                            while (foundPair == false)
+                            {
+                                string lt = s.Pop();
+
+                                if (lt == "(")
+                                {
+                                    foundPair = true;
+                                    s.Push(EvaluateList(l));
+                                }
+                                else
+                                {
+                                    l.Insert(0, lt);
+                                }
+                                Debug.WriteLine("l: " + String.Join(", ", l));
+                            }
+                        }
+                        else
+                        {
+                            if (token != "") s.Push(token);
+                        }
+                    }
+                    catch (InvalidOperationException e)
+                    {
+                        Debug.WriteLine("unbalanced math equations");
+                    }
+                }
+                Debug.WriteLine("s: " + String.Join(", ", s));
+                listBox1.Items.Clear();
+                try
+                {
+                    string r = EvaluateList(s.Reverse().ToList());
+                    Debug.WriteLine("r: " + r);
+
+                    listBox1.Items.Add(r);
+                }
+                catch
+                {
+                    listBox1.Items.Add("error: math error");
+                }
+                finally
+                {
+                    listBox1.SelectedIndex = 0;
+                    // TODO append math history
+                }
+            }
+        }
+
+        private string EvaluateList(List<string> list)
+        {
+            if (list.Count == 0) return "";
+            float a = 0;
+            string command = list[0];
+            list.RemoveAt(0);
+            switch (command)
+            {
+                case "+":
+                    a = 0;
+                    foreach (string token in list)
+                        a += float.Parse(token);
+                    break;
+                case "-":
+                    a = float.Parse(list[0]);
+                    list.RemoveAt(0);
+                    foreach (string token in list)
+                        a -= float.Parse(token);
+                    break;
+                case "*":
+                    a = 1;
+                    foreach (string token in list)
+                        a *= float.Parse(token);
+                    break;
+                case "/":
+                    a = float.Parse(list[0]);
+                    list.RemoveAt(0);
+                    foreach (string token in list)
+                        a /= float.Parse(token);
+                    break;
+                default:
+                    break;
+            }
+            return a.ToString();
         }
     }
 
@@ -317,12 +452,19 @@ namespace launcher_test
             string pattern = needle;
             // TODO score and sort
             List<Link> matches = new List<Link>();
-            foreach(Link link in Links)
+            try
             {
-                if (Regex.IsMatch(link.FileName, pattern, RegexOptions.IgnoreCase))
+                foreach (Link link in Links)
                 {
-                    matches.Add(link);
+                    if (Regex.IsMatch(link.FileName, pattern, RegexOptions.IgnoreCase))
+                    {
+                        matches.Add(link);
+                    }
                 }
+            }
+            catch (ArgumentException e)
+            {
+                Debug.WriteLine("error regex: " + e);
             }
 
             return matches;
